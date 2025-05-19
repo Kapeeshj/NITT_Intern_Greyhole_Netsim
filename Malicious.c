@@ -1,7 +1,7 @@
 
 
 /****************************************************
-         This file contains code for generation of Malicious Node(SinkHole) for networks running AODV in Layer3.
+         This file contains code for generation of Malicious Node(GreyHole) for networks running AODV in Layer3.
 		 This works only for UDP and not for TCP.
 		 
 		 
@@ -42,40 +42,36 @@ int fn_NetSim_AODV_MaliciousRouteAddToCache(NetSim_EVENTDETAILS*);
 int fn_NetSim_AODV_MaliciousProcessSourceRouteOption(NetSim_EVENTDETAILS*);
 
 
-int fn_NetSim_AODV_MaliciousNode(NetSim_EVENTDETAILS* pstruEventDetails)
+#define GREYHOLE_NODE_ID 4  // Change this to your malicious node ID
+#define DROP_PROBABILITY 0.5  // 50% chance to drop a data packet
+
+int fn_NetSim_AODV_IsGreyholeNode(NetSim_EVENTDETAILS* pstruEventDetails)
 {
-	if(pstruEventDetails->nDeviceId == MALICIOUS_NODE1 )
-		{//for 3 malicious nodes if(pstruEventDetails->nDeviceId ==28||pstruEventDetails->nDeviceId ==22||pstruEventDetails->nDeviceId ==34)
-		//just mention in the if statement the id of the device you want to be malicious node)
-		return 1;
-		}
-	return 0;
+    return pstruEventDetails->nDeviceId == GREYHOLE_NODE_ID;
 }
 
-int fn_NetSim_AODV_MaliciousRouteAddToCache(NetSim_EVENTDETAILS* pstruEventDetails)
+// Called during data packet processing
+int fn_NetSim_AODV_GreyholeHandleData(NetSim_EVENTDETAILS* pstruEventDetails)
 {
+    if (!fn_NetSim_AODV_IsGreyholeNode(pstruEventDetails)) return 0;
 
-	AODV_RREQ* rreq = (AODV_RREQ*)pstruEventDetails->pPacket->pstruNetworkData->Packet_RoutingProtocol;
-	
-	AODV_INSERT_ROUTE_TABLE(rreq->DestinationIPAddress,
-		rreq->DestinationSequenceNumber,
-		0,
-		rreq->DestinationIPAddress,
-		pstruEventDetails->dEventTime+AODV_ACTIVE_ROUTE_TIMEOUT);
+    if (pstruEventDetails->pPacket->nPacketType == PacketType_App)
+    {
+        double r = (double)rand() / RAND_MAX; // Random value between 0 and 1
 
-	return 1;
+        if (r < DROP_PROBABILITY)
+        {
+            // Drop the packet
+            AODV_DEV_VAR(pstruEventDetails->nDeviceId)->aodvMetrics.packetDropped++;
+            fn_NetSim_Packet_FreePacket(pstruEventDetails->pPacket);
+            return 1;
+        }
+        else
+        {
+            // Forward the packet normally
+            return 0;
+        }
+    }
 
-}
-
-int fn_NetSim_AODV_MaliciousProcessSourceRouteOption(NetSim_EVENTDETAILS* pstruEventDetails)
-{
-	NetSim_PACKET* packet = pstruEventDetails->pPacket;
-	
-	
-		//update the metrics
-		AODV_DEV_VAR(pstruEventDetails->nDeviceId)->aodvMetrics.packetReceived++;
-		
-		
-	fn_NetSim_Packet_FreePacket(pstruEventDetails->pPacket);
-	return 0;
+    return 0;
 }
